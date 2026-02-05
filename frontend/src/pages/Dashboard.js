@@ -8,6 +8,11 @@ export default function Dashboard() {
   const [editData, setEditData] = useState({});
   const [statusFilter, setStatusFilter] = useState("all");
   const [priorityFilter, setPriorityFilter] = useState("all");
+  const [isExtracting, setIsExtracting] = useState(false);
+  const [savingId, setSavingId] = useState(null);
+  const [actionLoading, setActionLoading] = useState({});
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [toasts, setToasts] = useState([]);
 
   const formatTimestamp = (value) => {
     if (!value) return "—";
@@ -19,6 +24,14 @@ export default function Dashboard() {
   const fetchTasks = async () => {
     const res = await API.get("/tasks");
     setTasks(res.data);
+  };
+
+  const pushToast = (message, tone = "success") => {
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    setToasts((prev) => [...prev, { id, message, tone }]);
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((toast) => toast.id !== id));
+    }, 3000);
   };
 
   const getSortedFilteredTasks = () => {
@@ -47,24 +60,40 @@ export default function Dashboard() {
   };
 
   const extract = async () => {
+    if (isExtracting) return;
+    setIsExtracting(true);
     await API.post("/extract", { text });
     setText("");
-    fetchTasks();
+    await fetchTasks();
+    pushToast("Tasks extracted successfully");
+    setIsExtracting(false);
   };
 
   const complete = async (id) => {
+    if (actionLoading[id]) return;
+    setActionLoading((prev) => ({ ...prev, [id]: "complete" }));
     await API.put(`/tasks/${id}/complete`);
-    fetchTasks();
+    await fetchTasks();
+    pushToast("Task marked complete");
+    setActionLoading((prev) => ({ ...prev, [id]: null }));
   };
 
   const reopen = async (id) => {
+    if (actionLoading[id]) return;
+    setActionLoading((prev) => ({ ...prev, [id]: "reopen" }));
     await API.put(`/tasks/${id}/undo`);
-    fetchTasks();
+    await fetchTasks();
+    pushToast("Task reopened");
+    setActionLoading((prev) => ({ ...prev, [id]: null }));
   };
 
   const remove = async (id) => {
+    if (actionLoading[id]) return;
+    setActionLoading((prev) => ({ ...prev, [id]: "delete" }));
     await API.delete(`/tasks/${id}`);
-    fetchTasks();
+    await fetchTasks();
+    pushToast("Task deleted");
+    setActionLoading((prev) => ({ ...prev, [id]: null }));
   };
 
   const startEdit = (task) => {
@@ -73,9 +102,27 @@ export default function Dashboard() {
   };
 
   const saveEdit = async (id) => {
+    if (savingId) return;
+    setSavingId(id);
     await API.put(`/tasks/${id}`, editData);
     setEditing(null);
-    fetchTasks();
+    await fetchTasks();
+    pushToast("Task updated");
+    setSavingId(null);
+  };
+
+  const openDeleteModal = (task) => {
+    setDeleteTarget(task);
+  };
+
+  const closeDeleteModal = () => {
+    setDeleteTarget(null);
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    await remove(deleteTarget.id);
+    setDeleteTarget(null);
   };
 
   useEffect(() => {
@@ -84,6 +131,15 @@ export default function Dashboard() {
 
   return (
     <>
+      <div className="toast-stack">
+        {toasts.map((toast) => (
+          <div key={toast.id} className={`toast-card ${toast.tone}`}>
+            <div className="toast-dot" />
+            <span>{toast.message}</span>
+          </div>
+        ))}
+      </div>
+
       <nav className="navbar navbar-expand-lg dashboard-nav">
         <div className="container">
           <div className="nav-brand">
@@ -134,8 +190,15 @@ export default function Dashboard() {
               placeholder="Paste the meeting notes or transcript here..."
             />
 
-            <button className="btn btn-primary" onClick={extract}>
-              Extract Tasks
+            <button className="btn btn-primary" onClick={extract} disabled={isExtracting}>
+              {isExtracting && (
+                <span
+                  className="spinner-border spinner-border-sm me-2"
+                  role="status"
+                  aria-hidden="true"
+                />
+              )}
+              {isExtracting ? "Extracting" : "Extract Tasks"}
             </button>
           </div>
 
@@ -197,9 +260,16 @@ export default function Dashboard() {
             </div>
           </div>
 
-        {getSortedFilteredTasks().map((t) => (
-          <div className="glass-card task-card p-3 mb-3" key={t.id}>
-            {editing === t.id ? (
+        {getSortedFilteredTasks().length === 0 ? (
+          <div className="empty-state glass-card">
+            <div className="empty-icon">📄</div>
+            <h4>No tasks yet</h4>
+            <p>Paste a meeting transcript to generate tasks.</p>
+          </div>
+        ) : (
+          getSortedFilteredTasks().map((t) => (
+            <div className="glass-card task-card p-3 mb-3" key={t.id}>
+              {editing === t.id ? (
               <>
                 <input
                   className="form-control mb-2"
@@ -242,8 +312,16 @@ export default function Dashboard() {
                 <button
                   className="btn btn-success btn-sm me-2"
                   onClick={() => saveEdit(t.id)}
+                  disabled={savingId === t.id}
                 >
-                  Save
+                  {savingId === t.id && (
+                    <span
+                      className="spinner-border spinner-border-sm me-2"
+                      role="status"
+                      aria-hidden="true"
+                    />
+                  )}
+                  {savingId === t.id ? "Saving" : "Save"}
                 </button>
 
                 <button
@@ -283,38 +361,112 @@ export default function Dashboard() {
                     <button
                       className="btn btn-outline-danger btn-sm"
                       onClick={() => reopen(t.id)}
+                      disabled={actionLoading[t.id]}
                     >
-                      Reopen
+                      {actionLoading[t.id] === "reopen" && (
+                        <span
+                          className="spinner-border spinner-border-sm me-2"
+                          role="status"
+                          aria-hidden="true"
+                        />
+                      )}
+                      {actionLoading[t.id] === "reopen" ? "Reopening" : "Reopen"}
                     </button>
                   ) : (
                     <button
                       className="btn btn-success btn-sm"
                       onClick={() => complete(t.id)}
+                      disabled={actionLoading[t.id]}
                     >
-                      Complete
+                      {actionLoading[t.id] === "complete" && (
+                        <span
+                          className="spinner-border spinner-border-sm me-2"
+                          role="status"
+                          aria-hidden="true"
+                        />
+                      )}
+                      {actionLoading[t.id] === "complete" ? "Completing" : "Complete"}
                     </button>
                   )}
 
                   <button
                     className="btn btn-outline-warning btn-sm"
                     onClick={() => startEdit(t)}
+                    disabled={actionLoading[t.id]}
                   >
                     Edit
                   </button>
 
                   <button
                     className="btn btn-outline-light btn-sm"
-                    onClick={() => remove(t.id)}
+                    onClick={() => openDeleteModal(t)}
+                    disabled={actionLoading[t.id]}
                   >
-                    Delete
+                    {actionLoading[t.id] === "delete" && (
+                      <span
+                        className="spinner-border spinner-border-sm me-2"
+                        role="status"
+                        aria-hidden="true"
+                      />
+                    )}
+                    {actionLoading[t.id] === "delete" ? "Deleting" : "Delete"}
                   </button>
                 </div>
               </>
             )}
-          </div>
-        ))}
+            </div>
+          ))
+        )}
         </div>
       </div>
+
+      {deleteTarget && (
+        <>
+          <div className="modal show modal-overlay" role="dialog" aria-modal="true">
+            <div className="modal-dialog modal-dialog-centered">
+              <div className="modal-content glass-card">
+                <div className="modal-header">
+                  <h5 className="modal-title">Delete task</h5>
+                  <button
+                    type="button"
+                    className="btn-close btn-close-white"
+                    aria-label="Close"
+                    onClick={closeDeleteModal}
+                  />
+                </div>
+                <div className="modal-body">
+                  Are you sure you want to delete this task?
+                </div>
+                <div className="modal-footer">
+                  <button
+                    type="button"
+                    className="btn btn-outline-light btn-sm"
+                    onClick={closeDeleteModal}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-danger btn-sm"
+                    onClick={confirmDelete}
+                    disabled={actionLoading[deleteTarget.id]}
+                  >
+                    {actionLoading[deleteTarget.id] === "delete" && (
+                      <span
+                        className="spinner-border spinner-border-sm me-2"
+                        role="status"
+                        aria-hidden="true"
+                      />
+                    )}
+                    {actionLoading[deleteTarget.id] === "delete" ? "Deleting" : "Delete"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="modal-backdrop show" />
+        </>
+      )}
     </>
   );
 }
