@@ -205,6 +205,20 @@ export default function Dashboard() {
           <div className="task-toolbar">
             <div>
               <h5>Your Tasks</h5>
+              <div className="mb-3">
+                <button
+                    className="btn btn-outline-danger btn-sm"
+                    onClick={async () => {
+                    if (window.confirm("Delete ALL tasks?")) {
+                        await API.delete("/tasks/all");
+                        fetchTasks();
+                    }
+                    }}
+                >
+                    Delete All Tasks
+                </button>
+                </div>
+
               <p className="text-muted mb-0">Newest tasks appear first.</p>
             </div>
 

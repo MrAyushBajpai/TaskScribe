@@ -1,36 +1,60 @@
-import re
+import os
+import json
+from groq import Groq
+from dotenv import load_dotenv
+from datetime import datetime, timezone
 
-ACTION_WORDS = ["will", "needs to", "should", "must", "has to"]
+load_dotenv()
 
-def extract_tasks(text: str):
-    sentences = text.split(".")
-    tasks = []
+client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
-    for s in sentences:
-        s = s.strip()
-        if any(word in s.lower() for word in ACTION_WORDS):
+today = datetime.now(timezone.utc).strftime("%d %b %Y")
 
-            name_match = re.search(r'\b[A-Z][a-z]+\b', s)
-            owner = name_match.group(0) if name_match else None
 
-            date_match = re.search(
-                r'\b(\d{1,2}\s?(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)|tomorrow|next week|Monday|Tuesday|Friday)\b',
-                s
-            )
-            deadline = date_match.group(0) if date_match else None
+def extract_tasks(transcript: str):
 
-            if "fix" in s.lower():
-                priority = "High"
-            elif "should" in s.lower():
-                priority = "Medium"
-            else:
-                priority = "Low"
+    json_prompt = {
+        "objective": "Extract actionable tasks from a meeting transcript",
+        "context": {
+            "today_date": today,
+            "source_material": transcript
+        },
+        "rules": {
+            "only_real_commitments": True,
+            "infer_owner_from": "speaker labels like 'Name: or context in sentences'",
+            "rewrite_into": "clean task phrases"
+        },
+        "output_schema": {
+            "description": "string",
+            "owner": "string",
+            "deadline": "string or null",
+            "priority": "Low | Medium | High"
+        }
+    }
 
-            tasks.append({
-                "description": s,
-                "owner": owner,
-                "deadline": deadline,
-                "priority": priority
-            })
+    try:
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            temperature=0,
+            messages=[
+                {
+                    "role": "system",
+                    "content": "Return ONLY a JSON array. No text."
+                },
+                {
+                    "role": "user",
+                    "content": json.dumps(json_prompt, indent=2)
+                }
+            ],
+        )
 
-    return tasks
+        content = response.choices[0].message.content
+
+        tasks = json.loads(content)
+        return tasks
+
+    except Exception as e:
+        with open("groq_error.txt", "w") as f:
+            f.write(str(e))
+        print("GROQ ERROR:", e)
+        return []

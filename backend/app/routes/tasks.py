@@ -45,6 +45,17 @@ def mark_complete(
     db.commit()
     return {"message": "Task marked as complete"}
 
+# ------------------ DELETE ALL TASKS ------------------
+
+@router.delete("/all")
+def delete_all_tasks(
+    db: Session = Depends(get_db),
+    user = Depends(get_current_user)
+):
+    db.query(Task).filter(Task.user_id == user.id).delete()
+    db.commit()
+    return {"message": "All tasks deleted"}
+
 
 # ------------------ DELETE TASK ------------------
 
