@@ -1,15 +1,14 @@
 import { useEffect } from "react";
-
-export default function useGlassHover(deps = []) {
+export default function useGlassHover() {
   useEffect(() => {
-    if (typeof window === "undefined") return undefined;
+    if (typeof window === "undefined") return;
 
     const coarsePointer =
-      window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
+      window.matchMedia("(pointer: coarse)").matches;
     const reduceMotion =
-      window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-    if (coarsePointer || reduceMotion) return undefined;
+    if (coarsePointer || reduceMotion) return;
 
     let activeEl = null;
     let rafId = null;
@@ -23,19 +22,16 @@ export default function useGlassHover(deps = []) {
     const handleMove = (event) => {
       const target = event.target;
       if (!(target instanceof Element)) return;
+
       const el = target.closest(".glass-hover");
       if (!el) return;
 
-      if (activeEl && activeEl !== el) {
-        resetEl(activeEl);
-      }
+      if (activeEl && activeEl !== el) resetEl(activeEl);
       activeEl = el;
 
       const rect = el.getBoundingClientRect();
-      const x = event.clientX - rect.left;
-      const y = event.clientY - rect.top;
-      const xr = (x / rect.width) * 100;
-      const yr = (y / rect.height) * 100;
+      const xr = ((event.clientX - rect.left) / rect.width) * 100;
+      const yr = ((event.clientY - rect.top) / rect.height) * 100;
 
       if (rafId) cancelAnimationFrame(rafId);
       rafId = requestAnimationFrame(() => {
@@ -47,9 +43,12 @@ export default function useGlassHover(deps = []) {
 
     const handlePointerOut = (event) => {
       if (!activeEl) return;
-      const related = event.relatedTarget instanceof Element
-        ? event.relatedTarget.closest(".glass-hover")
-        : null;
+
+      const related =
+        event.relatedTarget instanceof Element
+          ? event.relatedTarget.closest(".glass-hover")
+          : null;
+
       if (event.target === activeEl && !related) {
         resetEl(activeEl);
         activeEl = null;
@@ -64,5 +63,5 @@ export default function useGlassHover(deps = []) {
       document.removeEventListener("pointerout", handlePointerOut);
       if (rafId) cancelAnimationFrame(rafId);
     };
-  }, deps);
+  }, []); // ✅ array literal
 }
