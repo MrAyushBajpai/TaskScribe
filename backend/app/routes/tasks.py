@@ -1,20 +1,37 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+
 from ..models import Task
 from ..schemas import TaskOut
-from ..deps import get_db
+from ..deps_auth import get_current_user, get_db
 
 router = APIRouter(prefix="/tasks", tags=["Tasks"])
 
 
-@router.get("/", response_model=list[TaskOut])
-def get_tasks(db: Session = Depends(get_db)):
-    return db.query(Task).all()
+# ------------------ GET ALL TASKS (only for logged-in user) ------------------
 
+@router.get("/", response_model=list[TaskOut])
+def get_tasks(
+    db: Session = Depends(get_db),
+    user = Depends(get_current_user)
+):
+    tasks = db.query(Task).filter(Task.user_id == user.id).all()
+    return tasks
+
+
+# ------------------ MARK TASK COMPLETE ------------------
 
 @router.put("/{task_id}/complete")
-def mark_complete(task_id: int, db: Session = Depends(get_db)):
-    task = db.query(Task).filter(Task.id == task_id).first()
+def mark_complete(
+    task_id: int,
+    db: Session = Depends(get_db),
+    user = Depends(get_current_user)
+):
+    task = db.query(Task).filter(
+        Task.id == task_id,
+        Task.user_id == user.id
+    ).first()
+
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
@@ -23,9 +40,19 @@ def mark_complete(task_id: int, db: Session = Depends(get_db)):
     return {"message": "Task marked as complete"}
 
 
+# ------------------ DELETE TASK ------------------
+
 @router.delete("/{task_id}")
-def delete_task(task_id: int, db: Session = Depends(get_db)):
-    task = db.query(Task).filter(Task.id == task_id).first()
+def delete_task(
+    task_id: int,
+    db: Session = Depends(get_db),
+    user = Depends(get_current_user)
+):
+    task = db.query(Task).filter(
+        Task.id == task_id,
+        Task.user_id == user.id
+    ).first()
+
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
